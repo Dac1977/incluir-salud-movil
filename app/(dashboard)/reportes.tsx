@@ -312,6 +312,7 @@ export default function ReportesPage() {
             const filasTabla = prestaciones.map(p => `
                 <tr>
                     <td style="padding: 8px; border: 1px solid #ddd;">${moment(p.fecha).tz(TIMEZONE).format('DD/MM/YYYY')}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">${p.completed_at ? moment(p.completed_at).tz(TIMEZONE).format('DD/MM/YYYY') : '-'}</td>
                     <td style="padding: 8px; border: 1px solid #ddd;">${p.tipo_prestacion.replace(/_/g, ' ').toUpperCase()}</td>
                     <td style="padding: 8px; border: 1px solid #ddd;">${p.paciente ? `${p.paciente.apellido}, ${p.paciente.nombre}` : 'N/A'}</td>
                     <td style="padding: 8px; border: 1px solid #ddd;">${p.paciente?.documento || 'N/A'}</td>
@@ -366,6 +367,7 @@ export default function ReportesPage() {
                             <thead>
                                 <tr>
                                     <th>Fecha</th>
+                                    <th>Realizada</th>
                                     <th>Tipo</th>
                                     <th>Paciente</th>
                                     <th>DNI Paciente</th>
@@ -932,11 +934,20 @@ export default function ReportesPage() {
                                                     .replace(/_/g, ' ')
                                                     .toUpperCase()}
                                             </Text>
-                                            <Text variant="small" className="text-muted-foreground">
-                                                {moment(prestacion.fecha)
-                                                    .tz(TIMEZONE)
-                                                    .format('DD/MM/YYYY')}
-                                            </Text>
+                                            <View>
+                                                <Text variant="small" className="text-muted-foreground">
+                                                    {moment(prestacion.fecha)
+                                                        .tz(TIMEZONE)
+                                                        .format('DD/MM/YYYY')}
+                                                </Text>
+                                                {prestacion.completed_at && (
+                                                    <Text variant="small" className="text-muted-foreground">
+                                                        Realizada: {moment(prestacion.completed_at)
+                                                            .tz(TIMEZONE)
+                                                            .format('DD/MM/YYYY')}
+                                                    </Text>
+                                                )}
+                                            </View>
                                         </View>
 
                                         {prestacion.paciente && (

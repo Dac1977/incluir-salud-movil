@@ -4,12 +4,9 @@
 
 ---
 
-## 0. IMPORTANTE: nada de esto está publicado todavía
+## 0. Estado de publicación (actualizado 02/11)
 
-Los cambios de las tareas 5, 6, 7 y los de esta sección están **solo en el working tree local** (`git status` los muestra como modificados, sin commit). Para que lleguen a los profesionales hay que:
-
-1. `git add` + commit.
-2. `eas update --channel production` (o el canal correspondiente) — son cambios JS/TS, compatibles con OTA, no requieren build nueva.
+Los cambios de las tareas 5, 6, 7, 8, 9 y 10 ya están commiteados y mergeados a `main` (y a `dev-diego-app`, puesta al día con `main` el 02/11). Falta el paso de OTA (`npm run update`, que publica a los canales `preview` y `production`) para que lleguen a los profesionales — son cambios JS/TS, compatibles con OTA, no requieren build nueva.
 
 ---
 
@@ -192,3 +189,15 @@ Los cambios de las tareas 5, 6, 7 y los de esta sección están **solo en el wor
 ### Tamaño
 
 Comparable a la tarea de "subtipos de prestación" — no es un cambio chico: tabla nueva + RLS, flujo nuevo en la app (con manejo offline), sección CRUD nueva en backoffice, y la función/trigger de email. Factible, pero es su propio feature.
+
+---
+
+## 12. Deuda técnica — hallazgos de `expo-doctor` (verificado 02/11/2026)
+
+**Estado: ⏳ Pendiente.** No bloquean la OTA del 02/11 (son de config/dependencias, no de código de runtime), pero conviene resolverlos pronto.
+
+1. **`app.json`**: `ios.usesNonExemptEncryption` no es un campo válido del schema de Expo — está duplicado con el correcto `ios.infoPlist.ITSAppUsesNonExemptEncryption`. Sacar el campo inválido.
+2. **13 paquetes de Expo desactualizados** un patch respecto al SDK 54 instalado (`expo`, `expo-updates`, `expo-router`, `expo-location`, `expo-font`, etc.). Fix: `npx expo install --check`.
+3. **`react-native-svg`** falta declarado como dependencia directa en `package.json` — lo requiere `lucide-react-native` como peer dependency. Hoy funciona porque quedó instalado de forma transitiva, pero es frágil ante un `npm install` limpio (la app podría crashear fuera de Expo Go). Fix: `npx expo install react-native-svg`.
+4. **`eas-cli` instalado como dependencia local** del proyecto — debería instalarse global o usarse vía `npx`/`pnpx`/`bunx`. Quitar de `package.json`.
+5. **Script `"update"`** (`npm version patch && eas update --branch preview && eas update --branch production`) publica a `preview` y `production` **en la misma corrida**, sin paso intermedio de verificación. Evaluar separar ambos pasos para poder probar en `preview` antes de pegarle a producción.
