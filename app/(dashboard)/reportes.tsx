@@ -269,6 +269,11 @@ export default function ReportesPage() {
         return `${m}m`;
     };
 
+    const formatearHora = (iso: string | null | undefined) => {
+        if (!iso) return '-';
+        return moment(iso).tz(TIMEZONE).format('HH:mm');
+    };
+
     const getFilterLabel = () => {
         switch (dateFilter) {
             case 'today':
@@ -311,6 +316,8 @@ export default function ReportesPage() {
                     <td style="padding: 8px; border: 1px solid #ddd;">${p.paciente ? `${p.paciente.apellido}, ${p.paciente.nombre}` : 'N/A'}</td>
                     <td style="padding: 8px; border: 1px solid #ddd;">${p.paciente?.documento || 'N/A'}</td>
                     <td style="padding: 8px; border: 1px solid #ddd;">${p.estado.toUpperCase()}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">${formatearHora(p.started_at)}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">${formatearHora(p.completed_at)}</td>
                     <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${formatearDuracion(p.minutos)}</td>
                     <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${formatearMonto(p.monto)}</td>
                 </tr>
@@ -363,6 +370,8 @@ export default function ReportesPage() {
                                     <th>Paciente</th>
                                     <th>DNI Paciente</th>
                                     <th>Estado</th>
+                                    <th>Inicio</th>
+                                    <th>Fin</th>
                                     <th>Duración</th>
                                     <th>Monto</th>
                                 </tr>

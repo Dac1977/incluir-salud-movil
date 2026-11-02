@@ -128,6 +128,20 @@ class PrestacionService {
     moment.locale('es');
   }
 
+  // Corre una promesa con un límite de tiempo. Si se excede, rechaza con un error
+  // de timeout (la promesa original sigue en curso pero deja de bloquear el flujo),
+  // permitiendo que el llamador caiga a su fallback de cache. Pensado para casos como
+  // "hay señal pero no hay crédito/datos reales" donde el request queda colgado en vez
+  // de fallar rápido.
+  private conTimeout<T>(promesa: PromiseLike<T>, ms: number = 15000): Promise<T> {
+    return Promise.race([
+      Promise.resolve(promesa),
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error('TIMEOUT_RED')), ms)
+      )
+    ]);
+  }
+
   async sugerirUbicacionDesdePrestacion(
     prestacionId: string,
     ubicacionLat: number,
@@ -161,7 +175,7 @@ class PrestacionService {
       p_prestacion_id: prestacionId,
       p_lat: ubicacionLat,
       p_lng: ubicacionLng,
-      p_precision_m: precisionM ?? null,
+      p_precision_m: precisionM ?? undefined,
     });
 
     if (error) {
@@ -211,14 +225,14 @@ class PrestacionService {
       p_centro_id: centroId,
       p_lat: ubicacionLat,
       p_lng: ubicacionLng,
-      p_precision_m: precisionM ?? null,
+      p_precision_m: precisionM ?? undefined,
     });
 
     if (error) {
       throw error;
     }
 
-    const payload = (data?.[0] as { exito: boolean; mensaje: string } | undefined) ?? {
+    const payload = ((data as any)?.[0] as { exito: boolean; mensaje: string } | undefined) ?? {
       exito: false,
       mensaje: 'Respuesta inválida al sugerir ubicación del centro',
     };
@@ -296,7 +310,7 @@ class PrestacionService {
     const { data, error } = await supabase.rpc('finalizar_prestacion_transporte', {
       prestacion_id: prestacionId,
       ubicacion_profesional: `POINT(${ubicacionLng} ${ubicacionLat})`,
-      notas_cierre: notas || null,
+      notas_cierre: notas || undefined,
       radio_permitido: 50,
     });
 
@@ -493,7 +507,7 @@ class PrestacionService {
 
         detallePrestacion = {
           tipo: prestacion.tipo_prestacion,
-          hora: this.formatearFecha(prestacion.completed_at, 'HH:mm'),
+          hora: this.formatearFecha(prestacion?.completed_at || '', 'HH:mm'),
           paciente: pacienteNombre
         };
       }
@@ -783,11 +797,13 @@ class PrestacionService {
         - UTC: ${inicioDelDiaUTC} a ${finDelDiaUTC}`);
 
       // Query usando RPC para obtener coordenadas extraídas
-      const { data: prestaciones, error } = await supabase.rpc('obtener_prestaciones_con_coordenadas_v2', {
-        p_user_id: currentUserId,
-        p_fecha_inicio: inicioDelDiaUTC,
-        p_fecha_fin: finDelDiaUTC
-      });
+      const { data: prestaciones, error } = await this.conTimeout(
+        supabase.rpc('obtener_prestaciones_con_coordenadas_v2', {
+          p_user_id: currentUserId,
+          p_fecha_inicio: inicioDelDiaUTC,
+          p_fecha_fin: finDelDiaUTC
+        })
+      );
       if (error) {
         console.log(error);
         throw error;
@@ -992,10 +1008,10 @@ class PrestacionService {
       const { data, error } = await supabase.rpc('cerrar_prestacion_con_validacion', {
         prestacion_id: prestacionId,
         ubicacion_profesional: `POINT(${ubicacionLng} ${ubicacionLat})`,
-        notas_cierre: notas || null,
-        p_device_id: deviceId,
+        notas_cierre: notas || undefined,
+        p_device_id: deviceId ?? undefined,
         radio_permitido: 50,
-        p_timestamp_cierre_real: timestampCierreReal || null
+        p_timestamp_cierre_real: timestampCierreReal || undefined
       });
 
       if (error) {
@@ -1161,20 +1177,25 @@ class PrestacionService {
         const currentUserId = user?.id;
 
         if (currentUserId) {
-          // ¿Ya hay otra prestación en_proceso para este paciente?
+          // Las domiciliarias son individuales: solo una en_proceso a la vez
+          // (cualquier paciente, mismo o distinto). Se excluye Transporte (flujo separado).
           const { data: enProceso } = await supabase
             .from('prestaciones')
-            .select('id')
+            .select('id, pacientes(nombre, apellido)')
             .eq('user_id', currentUserId)
-            .eq('paciente_id', prestacion.paciente_id)
             .eq('estado', 'en_proceso')
             .neq('id', prestacionId)
+            .neq('tipo_prestacion', 'Transporte')
             .limit(1);
 
           if (enProceso && enProceso.length > 0) {
+            const otra = enProceso[0] as any;
+            const nombreOtra = otra.pacientes
+              ? `${otra.pacientes.nombre} ${otra.pacientes.apellido}`
+              : 'otro paciente';
             return {
               exito: false,
-              mensaje: `Ya tenés una prestación en proceso para ${prestacion.paciente_nombre}. Cerrala antes de iniciar otra.`,
+              mensaje: `Ya tenés una prestación en proceso para ${nombreOtra}. Cerrala antes de iniciar otra.`,
               distancia_metros: 0
             };
           }
@@ -1269,7 +1290,9 @@ class PrestacionService {
         }
       }
 
-      // Validar que el cierre esté cerca del domicilio o de la sugerencia (solo Kine)
+      // Validar que el cierre esté cerca del domicilio o de la sugerencia (solo Kine).
+      // Con forzarCierre se omite el chequeo pero se registra la distancia real para auditoría.
+      let distanciaCierre: number | null = null;
       if (esKine) {
         const referenciasCierre = await this.obtenerReferenciasDomicilio(prestacionId, prestacion);
         if (referenciasCierre.length > 0) {
@@ -1278,14 +1301,12 @@ class PrestacionService {
             descripcion: r.descripcion
           }));
           const masCercanaCierre = resultadosCierre.reduce((min, r) => r.distancia < min.distancia ? r : min);
+          distanciaCierre = masCercanaCierre.distancia;
 
-          if (masCercanaCierre.distancia > 50) {
-            const detalles = resultadosCierre
-              .map(r => `${Math.round(r.distancia)}m del ${r.descripcion}`)
-              .join(' y ');
+          if (masCercanaCierre.distancia > 50 && !forzarCierre) {
             return {
               exito: false,
-              mensaje: `Estás a ${detalles}. Debés cerrar a menos de 50m de alguna.`,
+              mensaje: `FUERA_DE_RANGO|${Math.round(masCercanaCierre.distancia)}`,
               distancia_metros: masCercanaCierre.distancia
             };
           }
@@ -1315,7 +1336,9 @@ class PrestacionService {
       // Construir notas finales
       let notasFinales = notas || '';
       if (forzarCierre && motivoCierreAnticipado) {
-        const prefijo = '[CIERRE ANTICIPADO] ';
+        const prefijo = distanciaCierre != null && distanciaCierre > 50
+          ? '[CIERRE FUERA DE RANGO] '
+          : '[CIERRE ANTICIPADO] ';
         notasFinales = notasFinales
           ? `${prefijo}${motivoCierreAnticipado} | ${notasFinales}`
           : `${prefijo}${motivoCierreAnticipado}`;
@@ -1330,7 +1353,7 @@ class PrestacionService {
           ubicacion_lng: lng,
           notas: notasFinales,
           timestamp: now,
-          distancia_metros: 0,
+          distancia_metros: distanciaCierre != null ? Math.round(distanciaCierre) : 0,
         });
         // Limpiar coords de inicio
         await AsyncStorage.removeItem(`inicio_coords_${prestacionId}`);
@@ -1347,6 +1370,7 @@ class PrestacionService {
           completed_at: now,
           updated_at: now,
           ubicacion_cierre: `POINT(${lng} ${lat})`,
+          ...(distanciaCierre != null && { distancia_validacion: Math.round(distanciaCierre) }),
           ...(notasFinales && { notas: notasFinales })
         })
         .eq('id', prestacionId);
@@ -1669,6 +1693,7 @@ class PrestacionService {
                     auto_cerrada: false,
                     auto_cierre_motivo: null,
                     cierre_estado: 'manual',
+                    ...(prestacion.distancia_metros > 0 && { distancia_validacion: prestacion.distancia_metros }),
                     ...(prestacion.notas && { notas: prestacion.notas })
                   })
                   .eq('id', prestacion.prestacion_id)
@@ -1692,6 +1717,7 @@ class PrestacionService {
                   completed_at: prestacion.timestamp,
                   updated_at: new Date().toISOString(),
                   ubicacion_cierre: `POINT(${prestacion.ubicacion_lng} ${prestacion.ubicacion_lat})`,
+                  ...(prestacion.distancia_metros > 0 && { distancia_validacion: prestacion.distancia_metros }),
                   ...(prestacion.notas && { notas: prestacion.notas })
                 })
                 .eq('id', prestacion.prestacion_id)
@@ -1898,11 +1924,13 @@ class PrestacionService {
         - UTC: ${inicioUTC} a ${finUTC}`);
 
       // Query usando RPC para obtener coordenadas extraídas
-      const { data: prestaciones, error } = await supabase.rpc('obtener_prestaciones_con_coordenadas_v2', {
-        p_user_id: currentUserId,
-        p_fecha_inicio: inicioUTC,
-        p_fecha_fin: finUTC
-      });
+      const { data: prestaciones, error } = await this.conTimeout(
+        supabase.rpc('obtener_prestaciones_con_coordenadas_v2', {
+          p_user_id: currentUserId,
+          p_fecha_inicio: inicioUTC,
+          p_fecha_fin: finUTC
+        })
+      );
 
       if (error) {
         console.log(error);
@@ -2035,9 +2063,11 @@ class PrestacionService {
         return { prestaciones: [], error: 'Sin conexión y sin datos en cache' };
       }
 
-      const { data, error } = await supabase.rpc('obtener_prestaciones_pendientes_centro', {
-        p_centro_id: centroId
-      });
+      const { data, error } = await this.conTimeout(
+        supabase.rpc('obtener_prestaciones_pendientes_centro', {
+          p_centro_id: centroId
+        })
+      );
 
       if (error) {
         console.error('Error obteniendo prestaciones del centro:', error);
@@ -2136,12 +2166,21 @@ class PrestacionService {
         };
       }
 
+      const resultado = data as {
+        exito: boolean;
+        mensaje: string;
+        detalle?: any;
+        prestaciones_validadas?: number;
+        distancia_metros?: number;
+        centro_id?: string;
+      } | null;
+
       // Actualizar cache después de validación exitosa
-      if (data?.exito) {
+      if (resultado?.exito) {
         await this.obtenerPrestacionesDelDia(undefined, true);
       }
 
-      return data;
+      return resultado ?? { exito: false, mensaje: 'Respuesta inválida del servidor' };
     } catch (error: any) {
       console.error('Error validando prestaciones del centro:', error);
       return {
@@ -2151,20 +2190,28 @@ class PrestacionService {
     }
   }
 
-  // Obtener centros con prestaciones pendientes para el día actual
+  // Obtener centros con prestaciones pendientes en el rango permitido para validación grupal
   async obtenerCentrosConPrestacionesPendientes(): Promise<Array<{
     centro_id: string;
     centro_nombre: string;
     prestaciones_pendientes: number;
   }>> {
     try {
-      const { pendientes } = await this.obtenerPrestacionesDelDia();
+      const ahora = moment.tz(this.TIMEZONE);
+      const inicioRango = ahora.clone().subtract(6, 'days').startOf('day').toDate();
+      const finHoy = ahora.clone().endOf('day').toDate();
+      const { pendientes } = await this.obtenerPrestacionesPorRango(inicioRango, finHoy);
 
       // Agrupar por centro
       const centrosMap = new Map<string, { nombre: string; count: number }>();
 
       for (const p of pendientes) {
-        if (p.centro_id && p.centro_nombre && p.tipo_prestacion !== 'Transporte') {
+        if (
+          p.centro_id &&
+          p.centro_nombre &&
+          p.tipo_prestacion !== 'Transporte' &&
+          (p.estado === 'pendiente' || p.estado === 'en_proceso')
+        ) {
           const existing = centrosMap.get(p.centro_id);
           if (existing) {
             existing.count++;
@@ -2220,11 +2267,13 @@ class PrestacionService {
         - UTC: ${inicioAyerUTC} a ${finAyerUTC}`);
 
       // Query usando RPC para obtener coordenadas extraídas
-      const { data: prestaciones, error } = await supabase.rpc('obtener_prestaciones_con_coordenadas_v2', {
-        p_user_id: currentUserId,
-        p_fecha_inicio: inicioAyerUTC,
-        p_fecha_fin: finAyerUTC
-      });
+      const { data: prestaciones, error } = await this.conTimeout(
+        supabase.rpc('obtener_prestaciones_con_coordenadas_v2', {
+          p_user_id: currentUserId,
+          p_fecha_inicio: inicioAyerUTC,
+          p_fecha_fin: finAyerUTC
+        })
+      );
 
       if (error) {
         console.error('Error obteniendo prestaciones pendientes de ayer:', error);

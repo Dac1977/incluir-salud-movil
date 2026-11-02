@@ -148,8 +148,8 @@ class JornadaService {
             .maybeSingle();
 
           if (error) throw error;
-          if (data) await this.guardarJornadaActiva(data);
-          return data;
+          if (data) await this.guardarJornadaActiva(data as JornadaResidencia);
+          return data as JornadaResidencia;
         } catch {
           // Si falla el server, caer al cache
         }
@@ -231,9 +231,9 @@ class JornadaService {
 
       if (error) throw error;
 
-      await this.guardarJornadaActiva(data);
+      await this.guardarJornadaActiva(data as JornadaResidencia);
 
-      return { exito: true, mensaje: 'Jornada iniciada correctamente.', jornada: data };
+      return { exito: true, mensaje: 'Jornada iniciada correctamente.', jornada: data as JornadaResidencia };
     } catch (error) {
       console.error('Error iniciando jornada:', error);
       return { exito: false, mensaje: 'No se pudo iniciar la jornada. Intentá nuevamente.' };
@@ -283,7 +283,7 @@ class JornadaService {
       return {
         exito: true,
         mensaje: `Jornada finalizada. Duración: ${this.formatearDuracion(duracion)}.`,
-        jornada: data,
+        jornada: data as JornadaResidencia,
       };
     } catch (error) {
       console.error('Error finalizando jornada:', error);

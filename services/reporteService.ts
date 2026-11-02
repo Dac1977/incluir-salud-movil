@@ -57,11 +57,33 @@ export interface DiaResidenciaReporte {
     minutos: number;
 }
 
+export interface PrestacionResidenciaReporte {
+    id: string;
+    tipo_prestacion: string;
+    fecha: string;
+    monto: number;
+    estado: 'pendiente' | 'completada' | 'cancelada' | 'en_proceso';
+    started_at: string | null;
+    completed_at: string | null;
+    minutos: number | null;
+    paciente: {
+        nombre: string;
+        apellido: string;
+        documento: string;
+    } | null;
+}
+
 export interface ResidenciaReporteData {
     centro: CentroReporte;
     pacientes: PacienteReporte[];
     dias: DiaResidenciaReporte[];
     totalMinutos: number;
+    prestaciones: PrestacionResidenciaReporte[];
+    totales: {
+        cantidad: number;
+        monto: number;
+        minutos: number;
+    };
 }
 
 class ReporteService {
@@ -361,6 +383,13 @@ class ReporteService {
             const { data: prestaciones, error: prestacionesError } = await supabase
                 .from('prestaciones')
                 .select(`
+                    id,
+                    tipo_prestacion,
+                    fecha,
+                    monto,
+                    estado,
+                    started_at,
+                    completed_at,
                     paciente_id,
                     pacientes (
                         id,
@@ -371,15 +400,15 @@ class ReporteService {
                 `)
                 .eq('user_id', user.id)
                 .eq('centro_id', centroId)
-                .eq('estado', 'completada')
                 .gte('fecha', inicioUTC)
                 .lte('fecha', finUTC)
-                .not('paciente_id', 'is', null);
+                .not('paciente_id', 'is', null)
+                .order('fecha', { ascending: true });
 
             if (prestacionesError) throw prestacionesError;
 
             const pacientesMap = new Map<string, PacienteReporte>();
-            for (const p of (prestaciones || []) as any[]) {
+            const prestacionesReporte: PrestacionResidenciaReporte[] = (prestaciones || []).map((p: any) => {
                 const pac = p.pacientes;
                 if (pac && !pacientesMap.has(pac.id)) {
                     pacientesMap.set(pac.id, {
@@ -389,7 +418,27 @@ class ReporteService {
                         documento: pac.documento
                     });
                 }
-            }
+
+                const minutos = p.started_at && p.completed_at
+                    ? Math.round(moment(p.completed_at).diff(moment(p.started_at), 'minutes', true))
+                    : null;
+
+                return {
+                    id: p.id,
+                    tipo_prestacion: p.tipo_prestacion,
+                    fecha: p.fecha,
+                    monto: p.monto || 0,
+                    estado: p.estado,
+                    started_at: p.started_at,
+                    completed_at: p.completed_at,
+                    minutos,
+                    paciente: pac ? {
+                        nombre: pac.nombre,
+                        apellido: pac.apellido,
+                        documento: pac.documento
+                    } : null
+                };
+            });
 
             const pacientes = Array.from(pacientesMap.values()).sort((a, b) => {
                 const cmp = a.apellido.localeCompare(b.apellido);
@@ -397,11 +446,20 @@ class ReporteService {
                 return a.nombre.localeCompare(b.nombre);
             });
 
+            const prestacionesNoCanceladas = prestacionesReporte.filter(p => p.estado !== 'cancelada');
+            const totales = {
+                cantidad: prestacionesReporte.length,
+                monto: prestacionesNoCanceladas.reduce((sum, p) => sum + (p.monto || 0), 0),
+                minutos: prestacionesReporte.reduce((sum, p) => sum + (p.minutos || 0), 0)
+            };
+
             return {
                 centro: { id: centro.id, nombre: centro.nombre },
                 pacientes,
                 dias,
-                totalMinutos
+                totalMinutos,
+                prestaciones: prestacionesReporte,
+                totales
             };
         } catch (error) {
             console.error('Error obteniendo reporte de residencia:', error);

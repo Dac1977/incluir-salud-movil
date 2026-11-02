@@ -118,7 +118,7 @@ export default function ReporteResidenciaPage() {
             setIsLoading(true);
             const data = await reporteService.obtenerReporteResidencia(centroId, fechaInicio, fechaFin);
             setReporte(data);
-            if (data.dias.length === 0 && data.pacientes.length === 0) {
+            if (data.prestaciones.length === 0 && data.pacientes.length === 0) {
                 showAlert('Sin resultados', 'No se encontraron datos para el período seleccionado');
             }
         } catch (error) {
@@ -141,6 +141,11 @@ export default function ReporteResidenciaPage() {
         return `${m}m`;
     };
 
+    const formatearHora = (iso: string | null | undefined) => {
+        if (!iso) return '-';
+        return moment(iso).tz(TIMEZONE).format('HH:mm');
+    };
+
     const generarPDF = async () => {
         if (!reporte) {
             showAlert('Error', 'No hay datos para generar el PDF');
@@ -159,10 +164,16 @@ export default function ReporteResidenciaPage() {
                 </tr>
             `).join('');
 
-            const filasDias = reporte.dias.map(d => `
+            const filasPrestaciones = reporte.prestaciones.map(p => `
                 <tr>
-                    <td style="padding: 8px; border: 1px solid #ddd;">${formatearFecha(d.fecha)}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${formatearDuracion(d.minutos)}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">${formatearFecha(p.fecha)}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">${p.tipo_prestacion.replace(/_/g, ' ').toUpperCase()}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">${p.paciente ? `${p.paciente.apellido}, ${p.paciente.nombre}` : 'N/A'}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">${p.estado.toUpperCase()}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">${formatearHora(p.started_at)}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">${formatearHora(p.completed_at)}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${formatearDuracion(p.minutos)}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">$${p.monto.toLocaleString('es-AR')}</td>
                 </tr>
             `).join('');
 
@@ -181,6 +192,7 @@ export default function ReporteResidenciaPage() {
                         th { background-color: #3b82f6; color: white; padding: 10px; border: 1px solid #ddd; text-align: left; }
                         td { padding: 8px; border: 1px solid #ddd; }
                         .totales { margin-top: 20px; font-size: 13px; }
+                        .totales-row { margin: 5px 0; }
                         .footer { margin-top: 30px; font-size: 10px; color: #6b7280; text-align: center; }
                     </style>
                 </head>
@@ -209,21 +221,29 @@ export default function ReporteResidenciaPage() {
                         </table>
                     </div>
                     <div class="section">
-                        <div class="section-title">HORAS TRABAJADAS POR DÍA</div>
+                        <div class="section-title">PRESTACIONES</div>
                         <table>
                             <thead>
                                 <tr>
                                     <th>Fecha</th>
-                                    <th style="text-align: right;">Duración</th>
+                                    <th>Tipo</th>
+                                    <th>Paciente</th>
+                                    <th>Estado</th>
+                                    <th>Inicio</th>
+                                    <th>Fin</th>
+                                    <th>Duración</th>
+                                    <th>Monto</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                ${filasDias || '<tr><td colspan="2" style="text-align:center;">Sin jornadas</td></tr>'}
+                                ${filasPrestaciones || '<tr><td colspan="8" style="text-align:center;">Sin prestaciones</td></tr>'}
                             </tbody>
                         </table>
                     </div>
                     <div class="totales">
-                        <strong>Total de horas trabajadas:</strong> ${formatearDuracion(reporte.totalMinutos)}
+                        <div class="totales-row"><strong>Total de Prestaciones:</strong> ${reporte.totales.cantidad}</div>
+                        <div class="totales-row"><strong>Total de Horas:</strong> ${formatearDuracion(reporte.totales.minutos)}</div>
+                        <div class="totales-row"><strong>Monto Total:</strong> $${reporte.totales.monto.toLocaleString('es-AR')}</div>
                     </div>
                     <div class="footer">
                         Generado el ${moment().tz(TIMEZONE).format('DD/MM/YYYY HH:mm')}
@@ -366,13 +386,34 @@ export default function ReporteResidenciaPage() {
                         <Card>
                             <CardHeader>
                                 <CardTitle>
-                                    <Text>Total de Horas</Text>
+                                    <Text>Totales del Período</Text>
                                 </CardTitle>
                             </CardHeader>
-                            <CardContent>
-                                <Text variant="large" className="font-bold text-blue-600">
-                                    {formatearDuracion(reporte.totalMinutos)}
-                                </Text>
+                            <CardContent className="gap-2">
+                                <View className="flex-row justify-between">
+                                    <Text variant="small" className="text-muted-foreground">
+                                        Total de Prestaciones
+                                    </Text>
+                                    <Text variant="small" className="font-bold">
+                                        {reporte.totales.cantidad}
+                                    </Text>
+                                </View>
+                                <View className="flex-row justify-between">
+                                    <Text variant="small" className="text-muted-foreground">
+                                        Total de Horas
+                                    </Text>
+                                    <Text variant="small" className="font-bold text-blue-600">
+                                        {formatearDuracion(reporte.totales.minutos)}
+                                    </Text>
+                                </View>
+                                <View className="flex-row justify-between">
+                                    <Text variant="small" className="text-muted-foreground">
+                                        Monto Total
+                                    </Text>
+                                    <Text variant="small" className="font-bold text-blue-600">
+                                        ${reporte.totales.monto.toLocaleString('es-AR')}
+                                    </Text>
+                                </View>
                             </CardContent>
                         </Card>
 
@@ -404,23 +445,36 @@ export default function ReporteResidenciaPage() {
                         <Card>
                             <CardHeader>
                                 <CardTitle>
-                                    <Text>Horas por Día</Text>
+                                    <Text>Prestaciones ({reporte.prestaciones.length})</Text>
                                 </CardTitle>
                             </CardHeader>
-                            <CardContent className="gap-2">
-                                {reporte.dias.map((dia) => (
-                                    <View key={dia.fecha} className="flex-row justify-between items-center py-2 border-b border-border last:border-0">
-                                        <Text variant="small" className="font-medium">
-                                            {formatearFecha(dia.fecha)}
+                            <CardContent className="gap-3">
+                                {reporte.prestaciones.map((p) => (
+                                    <View key={p.id} className="p-3 bg-muted rounded-lg border border-border gap-1">
+                                        <View className="flex-row justify-between">
+                                            <Text variant="small" className="font-semibold">
+                                                {p.paciente ? `${p.paciente.apellido}, ${p.paciente.nombre}` : 'N/A'}
+                                            </Text>
+                                            <Text variant="small" className="text-muted-foreground">
+                                                {formatearFecha(p.fecha)}
+                                            </Text>
+                                        </View>
+                                        <Text variant="small" className="text-muted-foreground capitalize">
+                                            {p.tipo_prestacion.replace(/_/g, ' ')} · {p.estado}
                                         </Text>
-                                        <Text variant="small" className="font-bold text-blue-600">
-                                            {formatearDuracion(dia.minutos)}
-                                        </Text>
+                                        <View className="flex-row justify-between">
+                                            <Text variant="small" className="text-muted-foreground">
+                                                {formatearHora(p.started_at)} - {formatearHora(p.completed_at)} ({formatearDuracion(p.minutos)})
+                                            </Text>
+                                            <Text variant="small" className="font-bold text-blue-600">
+                                                ${p.monto.toLocaleString('es-AR')}
+                                            </Text>
+                                        </View>
                                     </View>
                                 ))}
-                                {reporte.dias.length === 0 && (
+                                {reporte.prestaciones.length === 0 && (
                                     <Text variant="small" className="text-muted-foreground text-center">
-                                        No hay jornadas registradas en el período
+                                        No hay prestaciones registradas en el período
                                     </Text>
                                 )}
                             </CardContent>

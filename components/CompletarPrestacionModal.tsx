@@ -12,7 +12,7 @@ import {
 import * as Location from 'expo-location';
 import React, { useState, useEffect } from 'react';
 import moment from 'moment-timezone';
-import { Linking, ScrollView, View } from 'react-native';
+import { KeyboardAvoidingView, Linking, Platform, ScrollView, View } from 'react-native';
 import { useDevMode } from '../contexts/DevModeContext';
 import { LocationData, useLocation } from '../hooks/useLocation';
 import {
@@ -75,11 +75,13 @@ export default function CompletarPrestacionModal({ visible, prestacion, onClose,
 
   const [confirmSuggestOpen, setConfirmSuggestOpen] = useState(false);
 
-  // Estado para cierre anticipado
+  // Estado para cierre anticipado / fuera de rango
   const [cierreAnticipadoModalOpen, setCierreAnticipadoModalOpen] = useState(false);
   const [motivoCierreAnticipado, setMotivoCierreAnticipado] = useState('');
+  const [tipoCierreForzado, setTipoCierreForzado] = useState<'duracion' | 'rango'>('duracion');
   const [minutosActuales, setMinutosActuales] = useState(0);
   const [minutosMinimos, setMinutosMinimos] = useState(0);
+  const [distanciaCierre, setDistanciaCierre] = useState(0);
   const [ubicacionCierre, setUbicacionCierre] = useState<LocationData | null>(null);
   const [loadingCierreAnticipado, setLoadingCierreAnticipado] = useState(false);
 
@@ -149,6 +151,14 @@ export default function CompletarPrestacionModal({ visible, prestacion, onClose,
           const partes = resultado.mensaje.split('|');
           setMinutosActuales(parseInt(partes[1], 10));
           setMinutosMinimos(parseInt(partes[2], 10));
+          setTipoCierreForzado('duracion');
+          setUbicacionCierre(ubicacion);
+          setMotivoCierreAnticipado('');
+          setCierreAnticipadoModalOpen(true);
+        } else if (resultado.mensaje.startsWith('FUERA_DE_RANGO|')) {
+          const partes = resultado.mensaje.split('|');
+          setDistanciaCierre(parseInt(partes[1], 10));
+          setTipoCierreForzado('rango');
           setUbicacionCierre(ubicacion);
           setMotivoCierreAnticipado('');
           setCierreAnticipadoModalOpen(true);
@@ -365,8 +375,10 @@ export default function CompletarPrestacionModal({ visible, prestacion, onClose,
       );
       setCierreAnticipadoModalOpen(false);
       if (resultado.exito) {
-        setSuccessTitle('Prestación cerrada anticipadamente');
-        setSuccessMessage('La prestación se cerró con cierre anticipado. El motivo quedó registrado.');
+        setSuccessTitle(tipoCierreForzado === 'rango' ? 'Prestación cerrada fuera de rango' : 'Prestación cerrada anticipadamente');
+        setSuccessMessage(tipoCierreForzado === 'rango'
+          ? 'La prestación se cerró fuera del domicilio. El motivo y la distancia quedaron registrados.'
+          : 'La prestación se cerró con cierre anticipado. El motivo quedó registrado.');
         setSuccessModalOpen(true);
       } else {
         setValidationErrorMessage(resultado.mensaje);
@@ -670,39 +682,55 @@ export default function CompletarPrestacionModal({ visible, prestacion, onClose,
 
       {/* Modal de Cierre Anticipado */}
       <AlertDialog open={cierreAnticipadoModalOpen} onOpenChange={setCierreAnticipadoModalOpen}>
-        <AlertDialogContent className="max-w-sm mx-6">
-          <AlertDialogHeader>
-            <View style={styles.modalIconContainer}>
-              <Clock size={48} color="#f59e0b" />
-              <AlertDialogTitle style={styles.modalTitle}>Duración insuficiente</AlertDialogTitle>
-            </View>
-            <AlertDialogDescription style={styles.modalDescription}>
-              {`Llevás ${minutosActuales} minutos (mínimo requerido: ${minutosMinimos} min).\n\n¿Querés cerrar la prestación de todas formas? Debés indicar el motivo.`}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <View className="px-4 pb-2">
-            <Textarea
-              placeholder="Motivo del cierre anticipado (obligatorio)..."
-              value={motivoCierreAnticipado}
-              onChangeText={setMotivoCierreAnticipado}
-              className="min-h-20"
-            />
-          </View>
-          <AlertDialogFooter style={styles.modalFooterColumn}>
-            <AlertDialogAction
-              onPress={handleConfirmarCierreAnticipado}
-              disabled={!motivoCierreAnticipado.trim() || loadingCierreAnticipado}
-              style={{ backgroundColor: '#f59e0b' }}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ width: '100%', alignItems: 'center' }}
+        >
+          <AlertDialogContent className="max-w-sm mx-6">
+            <ScrollView
+              style={{ flexGrow: 0 }}
+              keyboardShouldPersistTaps="handled"
             >
-              <Text className="text-white font-medium">
-                {loadingCierreAnticipado ? 'Cerrando...' : 'Cerrar con motivo'}
-              </Text>
-            </AlertDialogAction>
-            <AlertDialogCancel onPress={() => setCierreAnticipadoModalOpen(false)}>
-              <Text>Cancelar</Text>
-            </AlertDialogCancel>
-          </AlertDialogFooter>
-        </AlertDialogContent>
+              <AlertDialogHeader>
+                <View style={styles.modalIconContainer}>
+                  {tipoCierreForzado === 'rango'
+                    ? <MapPin size={48} color="#f59e0b" />
+                    : <Clock size={48} color="#f59e0b" />}
+                  <AlertDialogTitle style={styles.modalTitle}>
+                    {tipoCierreForzado === 'rango' ? 'Fuera del domicilio' : 'Duración insuficiente'}
+                  </AlertDialogTitle>
+                </View>
+                <AlertDialogDescription style={styles.modalDescription}>
+                  {tipoCierreForzado === 'rango'
+                    ? `Estás a ${distanciaCierre} metros del domicilio del paciente (máximo permitido: 50 m).\n\n¿Querés cerrar la prestación de todas formas? Debés indicar el motivo.`
+                    : `Llevás ${minutosActuales} minutos (mínimo requerido: ${minutosMinimos} min).\n\n¿Querés cerrar la prestación de todas formas? Debés indicar el motivo.`}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <View className="px-4 pb-2">
+                <Textarea
+                  placeholder={tipoCierreForzado === 'rango' ? 'Motivo del cierre fuera de rango (obligatorio)...' : 'Motivo del cierre anticipado (obligatorio)...'}
+                  value={motivoCierreAnticipado}
+                  onChangeText={setMotivoCierreAnticipado}
+                  className="min-h-20"
+                />
+              </View>
+              <AlertDialogFooter style={styles.modalFooterColumn}>
+                <AlertDialogAction
+                  onPress={handleConfirmarCierreAnticipado}
+                  disabled={!motivoCierreAnticipado.trim() || loadingCierreAnticipado}
+                  style={{ backgroundColor: '#f59e0b' }}
+                >
+                  <Text className="text-white font-medium">
+                    {loadingCierreAnticipado ? 'Cerrando...' : 'Cerrar con motivo'}
+                  </Text>
+                </AlertDialogAction>
+                <AlertDialogCancel onPress={() => setCierreAnticipadoModalOpen(false)}>
+                  <Text>Cancelar</Text>
+                </AlertDialogCancel>
+              </AlertDialogFooter>
+            </ScrollView>
+          </AlertDialogContent>
+        </KeyboardAvoidingView>
       </AlertDialog>
 
       {/* Modal de Límite Diario */}
