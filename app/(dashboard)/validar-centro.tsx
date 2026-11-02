@@ -25,6 +25,7 @@ import { Badge } from '../../components/ui/badge';
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -69,6 +70,11 @@ export default function ValidarCentroPage() {
   const [finalizandoJornada, setFinalizandoJornada] = useState(false);
   const [horasJornadaMes, setHorasJornadaMes] = useState(0);
   const [transcurrido, setTranscurrido] = useState('');
+
+  const [confirmCierreOpen, setConfirmCierreOpen] = useState(false);
+  const [pendientesSinValidar, setPendientesSinValidar] = useState(0);
+  const [accionConfirm, setAccionConfirm] = useState<'cerrarConValidar' | 'soloCerrar'>('cerrarConValidar');
+  const [mensajeValidacionPendiente, setMensajeValidacionPendiente] = useState('');
 
   const [successModalOpen, setSuccessModalOpen] = useState(false);
   const [successModalContext, setSuccessModalContext] = useState<'validacion' | 'sugerencia'>('validacion');
@@ -281,8 +287,41 @@ export default function ValidarCentroPage() {
     return result;
   };
 
+  // Prestaciones del día que podrían validarse pero no están seleccionadas
+  const contarSinValidar = () =>
+    prestacionesDelDia.filter(
+      p => !selectedIds.has(p.prestacion_id) && !p.paciente_completo_hoy && !p.started_at
+    ).length;
+
+  const cerrarJornada = async (): Promise<{ ok: boolean; mensaje?: string }> => {
+    if (!jornadaActiva) return { ok: true };
+    const resultado = await jornadaService.finalizarJornada(jornadaActiva.id, jornadaActiva.entrada_at);
+    if (resultado.exito) {
+      setJornadaActiva(null);
+      const mins = await jornadaService.obtenerHorasJornadasMes(String(centroId));
+      setHorasJornadaMes(mins);
+      return { ok: true, mensaje: resultado.mensaje };
+    }
+    setErrorMessage(resultado.mensaje);
+    setErrorDetail(null);
+    setErrorModalOpen(true);
+    return { ok: false };
+  };
+
   const handleFinalizarJornada = async () => {
     if (!jornadaActiva) return;
+    // Si quedan prestaciones del día sin validar (deseleccionadas), pedir confirmación
+    const sinValidar = contarSinValidar();
+    if (sinValidar > 0) {
+      setPendientesSinValidar(sinValidar);
+      setAccionConfirm('cerrarConValidar');
+      setConfirmCierreOpen(true);
+      return;
+    }
+    await ejecutarFinalizarJornada();
+  };
+
+  const ejecutarFinalizarJornada = async () => {
     setFinalizandoJornada(true);
     try {
       if (selectedIds.size > 0) {
@@ -295,18 +334,11 @@ export default function ValidarCentroPage() {
         }
       }
 
-      const resultado = await jornadaService.finalizarJornada(jornadaActiva.id, jornadaActiva.entrada_at);
-      if (resultado.exito) {
-        setJornadaActiva(null);
-        const mins = await jornadaService.obtenerHorasJornadasMes(String(centroId));
-        setHorasJornadaMes(mins);
+      const { ok, mensaje } = await cerrarJornada();
+      if (ok) {
         setSuccessModalContext('validacion');
-        setSuccessMessage(resultado.mensaje);
+        setSuccessMessage(mensaje || 'Jornada finalizada correctamente');
         setSuccessModalOpen(true);
-      } else {
-        setErrorMessage(resultado.mensaje);
-        setErrorDetail(null);
-        setErrorModalOpen(true);
       }
     } catch (e: any) {
       setErrorMessage(e?.message || 'Error al finalizar jornada');
@@ -314,6 +346,36 @@ export default function ValidarCentroPage() {
       setErrorModalOpen(true);
     } finally {
       setFinalizandoJornada(false);
+    }
+  };
+
+  const handleConfirmCierre = async () => {
+    setConfirmCierreOpen(false);
+    if (accionConfirm === 'cerrarConValidar') {
+      await ejecutarFinalizarJornada();
+      return;
+    }
+    // 'soloCerrar': las seleccionadas ya se validaron — solo cerrar la jornada
+    setValidating(true);
+    try {
+      const { ok, mensaje } = await cerrarJornada();
+      if (ok) {
+        setSuccessModalContext('validacion');
+        setSuccessMessage(mensajeValidacionPendiente || mensaje || 'Jornada cerrada correctamente');
+        setSuccessModalOpen(true);
+      }
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  const handleCancelCierre = () => {
+    setConfirmCierreOpen(false);
+    if (accionConfirm === 'soloCerrar') {
+      // Las prestaciones ya se validaron — avisar igualmente y dejar la jornada abierta
+      setSuccessModalContext('validacion');
+      setSuccessMessage(`${mensajeValidacionPendiente} La jornada sigue abierta — podés validar el resto después.`);
+      setSuccessModalOpen(true);
     }
   };
 
@@ -441,19 +503,19 @@ export default function ValidarCentroPage() {
       );
 
       if (result.exito) {
-        // Al validar también se cierra la jornada
+        // Al validar también se cierra la jornada — pero si quedan prestaciones
+        // del día sin validar (deseleccionadas), pedir confirmación antes
         if (jornadaActiva) {
-          const resultado = await jornadaService.finalizarJornada(jornadaActiva.id, jornadaActiva.entrada_at);
-          if (resultado.exito) {
-            setJornadaActiva(null);
-            const mins = await jornadaService.obtenerHorasJornadasMes(String(centroId));
-            setHorasJornadaMes(mins);
-          } else {
-            setErrorMessage(resultado.mensaje);
-            setErrorDetail(null);
-            setErrorModalOpen(true);
+          const sinValidar = contarSinValidar();
+          if (sinValidar > 0) {
+            setMensajeValidacionPendiente(result.mensaje);
+            setPendientesSinValidar(sinValidar);
+            setAccionConfirm('soloCerrar');
+            setConfirmCierreOpen(true);
             return;
           }
+          const { ok } = await cerrarJornada();
+          if (!ok) return;
         }
         setSuccessModalContext('validacion');
         setSuccessMessage(result.mensaje);
@@ -770,6 +832,31 @@ export default function ValidarCentroPage() {
           <AlertDialogFooter>
             <AlertDialogAction onPress={handleSuccessClose}>
               <Text className="text-primary-foreground">Aceptar</Text>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmación: quedan prestaciones sin validar */}
+      <AlertDialog open={confirmCierreOpen} onOpenChange={setConfirmCierreOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              <View className="flex-row items-center gap-2">
+                <AlertCircle size={24} className="text-amber-500" />
+                <Text className="text-lg font-semibold">Prestaciones sin validar</Text>
+              </View>
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {`Quedan ${pendientesSinValidar} prestación(es) del día sin validar. Si cerrás la jornada van a quedar pendientes y se cancelan automáticamente a los 7 días.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onPress={handleCancelCierre}>
+              <Text>Volver</Text>
+            </AlertDialogCancel>
+            <AlertDialogAction onPress={handleConfirmCierre}>
+              <Text className="text-primary-foreground">Cerrar igual</Text>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
