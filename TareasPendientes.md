@@ -149,24 +149,22 @@ Tareas Técnicas Adicionales
 9.3 Probar modales de mapa en diferentes dispositivos
 9.4 Verificar validaciones de botones con fechas edge case
 
-# 🔄 Pendiente - Falso positivo "prestación ya completada hoy" en centro
+# ✅ Resuelto - Falso positivo "prestación ya completada hoy" en centro
 
 ## Contexto
 - Laura Cabañas inició/finalizó jornada en Rejuvenecer el 5/8 sin poder validar.
 - La app mostró "Ya se validó una prestación para este paciente hoy" pero en la DB no había completadas del 5/8.
 - Se marcaron manualmente las 18 prestaciones del 5/8 como completadas para salir del paso.
 
-## Diagnóstico resumido
-- `obtener_prestaciones_pendientes_centro` y `validar_prestaciones_centro` usan `completed_at` dentro de un rango UTC basado en `now()`.
-- El cierre de la jornada anterior (~21:00 hora Argentina = ~00:00 UTC) genera `completed_at` en el límite del día UTC, lo cual puede confundir al cálculo o quedar cacheado en la app.
-- Cambiar el criterio a `fecha` (día programado) arreglaría el límite UTC, pero hoy existen 11 `en_proceso` (7 iniciados hoy) y 4 de ellos tienen una `completada` del mismo día, por lo que cambiar el criterio los bloquearía.
-
-## Opciones a evaluar el fin de semana
-1. **No tocar la lógica del límite diario en DB**, porque rompería los `en_proceso` activos.
-2. **Refrescar datos en la app** (`validar-centro.tsx`) justo antes de validar para evitar usar `paciente_completo_hoy` cacheado del día anterior.
-3. **Cambiar `obtener_prestaciones_pendientes_centro` para que no bloquee `en_proceso` con `started_at`** y dejar que la app maneje la exclusión mutual en el front.
-4. **Esperar a que terminen los turnos activos**, limpiar los 4 `en_proceso` duplicados y recién ahí migrar el criterio a `fecha`.
-5. **Investigar `validar_prestaciones_centro`** para que use `completed_at` convertido a fecha local de la `fecha` de la prestación, evitando depender de `now()` y del día UTC actual.
+## Causa y fix (verificado en producción el 31/10)
+- `obtener_prestaciones_pendientes_centro` y `validar_prestaciones_centro` calculaban el límite de día usando el corte crudo de medianoche UTC, en vez del corte real del día en Argentina — el cierre de jornada ~21:00 ARG (≈00:00 UTC) podía quedar mal clasificado por ese desfasaje.
+- Ambas funciones ahora calculan primero el día calendario en hora Argentina y recién después lo convierten a rango UTC:
+  ```sql
+  v_hoy_argentina := (now() at time zone 'America/Argentina/Buenos_Aires')::date;
+  v_inicio_dia_utc := v_hoy_argentina::timestamp at time zone 'America/Argentina/Buenos_Aires';
+  v_fin_dia_utc := v_inicio_dia_utc + interval '1 day';
+  ```
+- Con esto, el límite de "una completada por paciente por día" ya no se confunde por el corte UTC. Caso cerrado.
 
 ## Cuentas/IDs relevantes
 - AT Laura: `0bca4403-a9ba-4faa-851d-e7ce0fd0982f`
