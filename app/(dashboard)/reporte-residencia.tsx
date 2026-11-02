@@ -167,6 +167,7 @@ export default function ReporteResidenciaPage() {
             const filasPrestaciones = reporte.prestaciones.map(p => `
                 <tr>
                     <td style="padding: 8px; border: 1px solid #ddd;">${formatearFecha(p.fecha)}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">${p.completed_at ? formatearFecha(p.completed_at) : '-'}</td>
                     <td style="padding: 8px; border: 1px solid #ddd;">${p.tipo_prestacion.replace(/_/g, ' ').toUpperCase()}</td>
                     <td style="padding: 8px; border: 1px solid #ddd;">${p.paciente ? `${p.paciente.apellido}, ${p.paciente.nombre}` : 'N/A'}</td>
                     <td style="padding: 8px; border: 1px solid #ddd;">${p.estado.toUpperCase()}</td>
@@ -226,6 +227,7 @@ export default function ReporteResidenciaPage() {
                             <thead>
                                 <tr>
                                     <th>Fecha</th>
+                                    <th>Realizada</th>
                                     <th>Tipo</th>
                                     <th>Paciente</th>
                                     <th>Estado</th>
@@ -236,7 +238,7 @@ export default function ReporteResidenciaPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                ${filasPrestaciones || '<tr><td colspan="8" style="text-align:center;">Sin prestaciones</td></tr>'}
+                                ${filasPrestaciones || '<tr><td colspan="9" style="text-align:center;">Sin prestaciones</td></tr>'}
                             </tbody>
                         </table>
                     </div>
@@ -456,7 +458,7 @@ export default function ReporteResidenciaPage() {
                                                 {p.paciente ? `${p.paciente.apellido}, ${p.paciente.nombre}` : 'N/A'}
                                             </Text>
                                             <Text variant="small" className="text-muted-foreground">
-                                                {formatearFecha(p.fecha)}
+                                                {formatearFecha(p.fecha)}{p.completed_at ? ` · Realizada: ${formatearFecha(p.completed_at)}` : ''}
                                             </Text>
                                         </View>
                                         <Text variant="small" className="text-muted-foreground capitalize">
