@@ -55,6 +55,8 @@ export interface CentroReporte {
 export interface DiaResidenciaReporte {
     fecha: string;
     minutos: number;
+    entrada_at: string | null;
+    salida_at: string | null;
 }
 
 export interface PrestacionResidenciaReporte {
@@ -365,19 +367,24 @@ class ReporteService {
 
             if (jornadasError) throw jornadasError;
 
-            const diasMap = new Map<string, number>();
+            const diasMap = new Map<string, { minutos: number; entrada_at: string | null; salida_at: string | null }>();
             let totalMinutos = 0;
             for (const j of (jornadas || []) as any[]) {
                 if (j.entrada_at && j.salida_at) {
                     const minutos = moment(j.salida_at).diff(moment(j.entrada_at), 'minutes');
                     const fechaKey = moment(j.fecha).format('YYYY-MM-DD');
-                    diasMap.set(fechaKey, (diasMap.get(fechaKey) || 0) + minutos);
+                    const prev = diasMap.get(fechaKey);
+                    diasMap.set(fechaKey, {
+                        minutos: (prev?.minutos || 0) + minutos,
+                        entrada_at: !prev?.entrada_at || moment(j.entrada_at).isBefore(prev.entrada_at) ? j.entrada_at : prev.entrada_at,
+                        salida_at: !prev?.salida_at || moment(j.salida_at).isAfter(prev.salida_at) ? j.salida_at : prev.salida_at,
+                    });
                     totalMinutos += minutos;
                 }
             }
 
             const dias = Array.from(diasMap.entries())
-                .map(([fecha, minutos]) => ({ fecha, minutos }))
+                .map(([fecha, d]) => ({ fecha, ...d }))
                 .sort((a, b) => a.fecha.localeCompare(b.fecha));
 
             const { data: prestaciones, error: prestacionesError } = await supabase
