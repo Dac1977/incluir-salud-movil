@@ -929,12 +929,12 @@ export default function ReportesPage() {
                                         className="p-3 bg-muted rounded-lg border border-border"
                                     >
                                         <View className="flex-row justify-between mb-2">
-                                            <Text variant="small" className="font-semibold">
+                                            <Text variant="small" className="font-semibold flex-1 mr-2" numberOfLines={1}>
                                                 {prestacion.tipo_prestacion
                                                     .replace(/_/g, ' ')
                                                     .toUpperCase()}
                                             </Text>
-                                            <View>
+                                            <View className="flex-shrink-0 items-end">
                                                 <Text variant="small" className="text-muted-foreground">
                                                     {moment(prestacion.fecha)
                                                         .tz(TIMEZONE)

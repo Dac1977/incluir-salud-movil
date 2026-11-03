@@ -146,6 +146,9 @@ export default function ReporteResidenciaPage() {
         return moment(iso).tz(TIMEZONE).format('HH:mm');
     };
 
+    const jornadaDelDia = (fecha: string) =>
+        reporte?.dias.find(d => moment(d.fecha).format('YYYY-MM-DD') === moment(fecha).tz(TIMEZONE).format('YYYY-MM-DD'));
+
     const generarPDF = async () => {
         if (!reporte) {
             showAlert('Error', 'No hay datos para generar el PDF');
@@ -454,19 +457,52 @@ export default function ReporteResidenciaPage() {
                                 {reporte.prestaciones.map((p) => (
                                     <View key={p.id} className="p-3 bg-muted rounded-lg border border-border gap-1">
                                         <View className="flex-row justify-between">
-                                            <Text variant="small" className="font-semibold">
+                                            <Text variant="small" className="font-semibold flex-1 mr-2" numberOfLines={1}>
                                                 {p.paciente ? `${p.paciente.apellido}, ${p.paciente.nombre}` : 'N/A'}
                                             </Text>
-                                            <Text variant="small" className="text-muted-foreground">
+                                            <Text variant="small" className="text-muted-foreground flex-shrink-0">
                                                 {formatearFecha(p.fecha)}{p.completed_at ? ` · Realizada: ${formatearFecha(p.completed_at)}` : ''}
                                             </Text>
                                         </View>
-                                        <Text variant="small" className="text-muted-foreground capitalize">
-                                            {p.tipo_prestacion.replace(/_/g, ' ')} · {p.estado}
-                                        </Text>
+                                        <View className="flex-row items-center gap-2">
+                                            <Text variant="small" className="text-muted-foreground capitalize flex-1" numberOfLines={1}>
+                                                {p.tipo_prestacion.replace(/_/g, ' ')}
+                                            </Text>
+                                            <View
+                                                className={`px-2 py-0.5 rounded ${p.estado === 'completada'
+                                                    ? 'bg-green-100'
+                                                    : p.estado === 'pendiente'
+                                                        ? 'bg-yellow-100'
+                                                        : p.estado === 'cancelada'
+                                                            ? 'bg-red-100'
+                                                            : 'bg-blue-100'
+                                                    }`}
+                                            >
+                                                <Text
+                                                    variant="small"
+                                                    className={`font-medium capitalize ${p.estado === 'completada'
+                                                        ? 'text-green-800'
+                                                        : p.estado === 'pendiente'
+                                                            ? 'text-yellow-800'
+                                                            : p.estado === 'cancelada'
+                                                                ? 'text-red-800'
+                                                                : 'text-blue-800'
+                                                        }`}
+                                                >
+                                                    {p.estado}
+                                                </Text>
+                                            </View>
+                                        </View>
                                         <View className="flex-row justify-between">
-                                            <Text variant="small" className="text-muted-foreground">
-                                                {formatearHora(p.started_at)} - {formatearHora(p.completed_at)} ({formatearDuracion(p.minutos)})
+                                            <Text variant="small" className="text-muted-foreground flex-1">
+                                                {p.started_at || p.completed_at
+                                                    ? `${formatearHora(p.started_at)} - ${formatearHora(p.completed_at)} (${formatearDuracion(p.minutos)})`
+                                                    : (() => {
+                                                        const j = jornadaDelDia(p.fecha);
+                                                        return j
+                                                            ? `${formatearHora(j.entrada_at)} - ${formatearHora(j.salida_at)} (Jornada: ${formatearDuracion(j.minutos)})`
+                                                            : `- - - (${formatearDuracion(p.minutos)})`;
+                                                    })()}
                                             </Text>
                                             <Text variant="small" className="font-bold text-blue-600">
                                                 ${p.monto.toLocaleString('es-AR')}
