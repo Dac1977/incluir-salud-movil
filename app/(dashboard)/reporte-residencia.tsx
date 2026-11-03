@@ -167,19 +167,26 @@ export default function ReporteResidenciaPage() {
                 </tr>
             `).join('');
 
-            const filasPrestaciones = reporte.prestaciones.map(p => `
+            const filasPrestaciones = reporte.prestaciones.map(p => {
+                const j = p.estado === 'completada' ? jornadaDelDia(p.fecha) : undefined;
+                const usarJornada = !p.started_at && j;
+                const inicio = usarJornada ? formatearHora(j.entrada_at) : formatearHora(p.started_at);
+                const fin = usarJornada ? formatearHora(j.salida_at) : formatearHora(p.completed_at);
+                const duracion = usarJornada ? `${formatearDuracion(j.minutos)} (jornada)` : formatearDuracion(p.minutos);
+                return `
                 <tr>
                     <td style="padding: 8px; border: 1px solid #ddd;">${formatearFecha(p.fecha)}</td>
                     <td style="padding: 8px; border: 1px solid #ddd;">${p.completed_at ? formatearFecha(p.completed_at) : '-'}</td>
                     <td style="padding: 8px; border: 1px solid #ddd;">${p.tipo_prestacion.replace(/_/g, ' ').toUpperCase()}</td>
                     <td style="padding: 8px; border: 1px solid #ddd;">${p.paciente ? `${p.paciente.apellido}, ${p.paciente.nombre}` : 'N/A'}</td>
                     <td style="padding: 8px; border: 1px solid #ddd;">${p.estado.toUpperCase()}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">${formatearHora(p.started_at)}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">${formatearHora(p.completed_at)}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${formatearDuracion(p.minutos)}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">${inicio}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">${fin}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${duracion}</td>
                     <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">$${p.monto.toLocaleString('es-AR')}</td>
                 </tr>
-            `).join('');
+            `;
+            }).join('');
 
             const html = `
                 <!DOCTYPE html>
@@ -495,10 +502,10 @@ export default function ReporteResidenciaPage() {
                                         </View>
                                         <View className="flex-row justify-between">
                                             <Text variant="small" className="text-muted-foreground flex-1">
-                                                {p.started_at || p.completed_at
+                                                {p.started_at
                                                     ? `${formatearHora(p.started_at)} - ${formatearHora(p.completed_at)} (${formatearDuracion(p.minutos)})`
                                                     : (() => {
-                                                        const j = jornadaDelDia(p.fecha);
+                                                        const j = p.estado === 'completada' ? jornadaDelDia(p.fecha) : undefined;
                                                         return j
                                                             ? `${formatearHora(j.entrada_at)} - ${formatearHora(j.salida_at)} (Jornada: ${formatearDuracion(j.minutos)})`
                                                             : `- - - (${formatearDuracion(p.minutos)})`;
