@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useEffect, useState } from 'react';
 import { View, Image } from 'react-native';
 import { router } from 'expo-router';
-import { supabase } from '../lib/supabase';
+import { supabase, getSessionWithTimeout } from '../lib/supabase';
 import { Text } from '../components/ui/text';
 import { choferService } from '../services/choferService';
 import { deviceService } from '../services/deviceService';
@@ -16,7 +16,10 @@ export default function IndexPage() {
   useEffect(() => {
     // Obtener sesión actual y manejar redirección
     const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      // getSession() puede intentar refrescar el JWT contra el servidor; sin conexión
+      // esa llamada puede quedar colgada indefinidamente. Con timeout, si no responde a
+      // tiempo la tratamos directamente como "sin conexión" y seguimos el flujo offline.
+      const { session, timedOut } = await getSessionWithTimeout();
 
       if (session) {
         deviceService.registerDevice().catch(console.error);
@@ -28,14 +31,16 @@ export default function IndexPage() {
         return;
       }
 
-      // Sin sesión — verificar si estamos offline con backup previo
-      const isOnline = await connectivityService.isOnline();
+      // Sin sesión (o no se pudo confirmar a tiempo) — verificar si estamos offline con backup previo
+      const isOnline = timedOut ? false : await connectivityService.isOnline();
       if (!isOnline) {
         try {
           const raw = await AsyncStorage.getItem(BACKUP_KEY);
           if (raw) {
             // Hay backup → ir al dashboard en modo offline
-            console.log('📡 Cold-start offline: redirigiendo al dashboard con backup');
+            console.log(timedOut
+              ? '📡 Timeout verificando sesión (sin conexión): redirigiendo al dashboard con backup'
+              : '📡 Cold-start offline: redirigiendo al dashboard con backup');
             const path = await choferService.getLandingRoute();
             router.replace(path);
             setLoading(false);

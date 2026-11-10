@@ -43,6 +43,152 @@ class JornadaService {
     return !!(state.isConnected && state.isInternetReachable);
   }
 
+  private calcularDistancia(
+    lat1: number,
+    lng1: number,
+    lat2: number,
+    lng2: number
+  ): number {
+    const R = 6371e3;
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) *
+      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  // Sugerencias de ubicación del centro aún pendientes de aprobación (misma key
+  // que usa prestacionService; se lee directo para evitar dependencia circular)
+  private async obtenerSugerenciasCentroPendientes(centroId: string): Promise<Array<{ lat: number; lng: number }>> {
+    try {
+      const raw = await AsyncStorage.getItem('sugerencias_offline');
+      const lista: any[] = raw ? JSON.parse(raw) : [];
+      return lista
+        .filter(s => s.tipo === 'centro' && s.id === centroId)
+        .map(s => ({ lat: s.ubicacion_lat, lng: s.ubicacion_lng }));
+    } catch {
+      return [];
+    }
+  }
+
+  // Valida que el usuario esté dentro del radio del centro para iniciar jornada.
+  // Online: consulta el centro y calcula distancia server-side vía RPC.
+  // Offline: usa las coordenadas del centro guardadas en el cache de prestaciones.
+  private async validarDistanciaCentro(
+    centroId: string,
+    lat: number,
+    lng: number,
+    online: boolean
+  ): Promise<{ exito: boolean; mensaje: string }> {
+    try {
+      if (online) {
+        const { data: centro, error } = await supabase
+          .from('centros')
+          .select('nombre, ubicacion, ubicacion_sugerida, radio_metros')
+          .eq('id', centroId)
+          .single();
+
+        if (error) throw error;
+
+        const referencias = [centro?.ubicacion, centro?.ubicacion_sugerida].filter(Boolean);
+        if (referencias.length === 0) {
+          return {
+            exito: false,
+            mensaje: 'El centro no tiene ubicación registrada. Sugerí una ubicación antes de iniciar la jornada.',
+          };
+        }
+
+        const radio = typeof centro?.radio_metros === 'number' ? centro.radio_metros : 100;
+        const punto = `SRID=4326;POINT(${lng} ${lat})`;
+
+        const distancias = await Promise.all(
+          referencias.map(async (ref) => {
+            const { data, error: rpcError } = await supabase.rpc('calcular_distancia_metros', {
+              punto1: ref,
+              punto2: punto,
+            });
+            return rpcError || typeof data !== 'number' ? null : data;
+          })
+        );
+
+        const valores = distancias.filter((d): d is number => d !== null);
+
+        // Sugerencias pendientes de aprobación también cuentan como referencia (igual que domiciliarias)
+        const sugeridas = await this.obtenerSugerenciasCentroPendientes(centroId);
+        for (const s of sugeridas) {
+          valores.push(this.calcularDistancia(lat, lng, s.lat, s.lng));
+        }
+
+        if (valores.length === 0) {
+          return {
+            exito: false,
+            mensaje: 'No se pudo verificar tu distancia al centro. Intentá nuevamente.',
+          };
+        }
+
+        const distancia = Math.min(...valores);
+        if (distancia > radio) {
+          return {
+            exito: false,
+            mensaje: `Estás a ${Math.round(distancia)}m del centro${centro?.nombre ? ` ${centro.nombre}` : ''}. Debés estar a menos de ${radio}m para iniciar la jornada.`,
+          };
+        }
+        return { exito: true, mensaje: '' };
+      }
+
+      // Offline: buscar coords del centro en el cache de prestaciones
+      // (misma key que usa prestacionService; se lee directo para evitar dependencia circular)
+      const raw = await AsyncStorage.getItem('prestaciones_cache');
+      const cached = raw ? JSON.parse(raw) : null;
+      const prestacion = [...(cached?.pendientes ?? []), ...(cached?.completadas ?? [])]
+        .find((p: any) => p.centro_id === centroId);
+
+      const refs: Array<{ lat: number; lng: number }> = [];
+      if (prestacion) {
+        if (typeof prestacion.centro_domicilio_lat === 'number' && typeof prestacion.centro_domicilio_lng === 'number') {
+          refs.push({ lat: prestacion.centro_domicilio_lat, lng: prestacion.centro_domicilio_lng });
+        }
+        if (typeof prestacion.centro_sugerida_lat === 'number' && typeof prestacion.centro_sugerida_lng === 'number') {
+          refs.push({ lat: prestacion.centro_sugerida_lat, lng: prestacion.centro_sugerida_lng });
+        }
+        if (refs.length === 0 && typeof prestacion.centro_lat === 'number' && typeof prestacion.centro_lng === 'number') {
+          refs.push({ lat: prestacion.centro_lat, lng: prestacion.centro_lng });
+        }
+      }
+
+      // Sugerencias pendientes de aprobación también cuentan como referencia (igual que domiciliarias)
+      const sugeridas = await this.obtenerSugerenciasCentroPendientes(centroId);
+      refs.push(...sugeridas);
+
+      if (refs.length === 0) {
+        return {
+          exito: false,
+          mensaje: 'El centro no tiene ubicación registrada. Sugerí una ubicación antes de iniciar la jornada.',
+        };
+      }
+
+      const radio = typeof prestacion?.centro_radio_metros === 'number' ? prestacion.centro_radio_metros : 100;
+      const distancia = Math.min(...refs.map(r => this.calcularDistancia(lat, lng, r.lat, r.lng)));
+      if (distancia > radio) {
+        return {
+          exito: false,
+          mensaje: `Estás a ${Math.round(distancia)}m del centro. Debés estar a menos de ${radio}m para iniciar la jornada.`,
+        };
+      }
+      return { exito: true, mensaje: '' };
+    } catch (e) {
+      console.error('Error validando distancia al centro:', e);
+      return {
+        exito: false,
+        mensaje: 'No se pudo verificar tu ubicación respecto del centro. Intentá nuevamente.',
+      };
+    }
+  }
+
   private async guardarOffline(item: JornadaOffline): Promise<void> {
     const raw = await AsyncStorage.getItem(this.OFFLINE_KEY);
     const lista: JornadaOffline[] = raw ? JSON.parse(raw) : [];
@@ -186,6 +332,13 @@ class JornadaService {
           const { data: { session } } = await supabase.auth.getSession();
           userId = session?.user?.id;
         } catch { /* se dejará sin user_id */ }
+      }
+
+      // Regla de negocio: la jornada solo puede iniciarse dentro del radio del centro.
+      // El cierre no valida ubicación (decisión del negocio para AT).
+      const distanciaCheck = await this.validarDistanciaCentro(centroId, lat, lng, online);
+      if (!distanciaCheck.exito) {
+        return { exito: false, mensaje: distanciaCheck.mensaje };
       }
 
       if (!online) {
