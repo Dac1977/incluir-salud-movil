@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Session } from '@supabase/supabase-js';
 import { useEffect, useRef, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, getSessionWithTimeout } from '../lib/supabase';
 import { connectivityService } from '../services/connectivityService';
 
 const BACKUP_KEY = 'session_user_backup';
@@ -25,7 +25,10 @@ export function useSessionGuard(onNoSession: () => void) {
     let cancelled = false;
 
     const init = async () => {
-      const { data: { session: current } } = await supabase.auth.getSession();
+      // getSession() puede intentar refrescar el JWT contra el servidor; sin conexión
+      // esa llamada puede quedar colgada indefinidamente. Con timeout, si no responde a
+      // tiempo la tratamos directamente como "sin conexión" y seguimos el flujo offline.
+      const { session: current, timedOut } = await getSessionWithTimeout();
 
       if (cancelled) return;
 
@@ -38,8 +41,8 @@ export function useSessionGuard(onNoSession: () => void) {
         return;
       }
 
-      // No hay sesión activa — verificar si estamos offline con backup
-      const isOnline = await connectivityService.isOnline();
+      // No hay sesión activa (o no se pudo confirmar a tiempo) — verificar si estamos offline con backup
+      const isOnline = timedOut ? false : await connectivityService.isOnline();
       if (!isOnline) {
         try {
           const raw = await AsyncStorage.getItem(BACKUP_KEY);
@@ -50,7 +53,9 @@ export function useSessionGuard(onNoSession: () => void) {
             lastSession.current = offlineSession;
             setSession(offlineSession);
             setLoading(false);
-            console.log('📡 Sesión offline restaurada desde backup (JWT expirado sin internet)');
+            console.log(timedOut
+              ? '📡 Timeout verificando sesión (sin conexión): sesión offline restaurada desde backup'
+              : '📡 Sesión offline restaurada desde backup (JWT expirado sin internet)');
             return;
           }
         } catch {

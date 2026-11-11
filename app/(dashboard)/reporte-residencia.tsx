@@ -254,7 +254,7 @@ export default function ReporteResidenciaPage() {
                     </div>
                     <div class="totales">
                         <div class="totales-row"><strong>Total de Prestaciones:</strong> ${reporte.totales.cantidad}</div>
-                        <div class="totales-row"><strong>Total de Horas:</strong> ${formatearDuracion(reporte.totales.minutos)}</div>
+                        <div class="totales-row"><strong>Total de Horas:</strong> ${formatearDuracion(reporte.totalMinutos)}</div>
                         <div class="totales-row"><strong>Monto Total:</strong> $${reporte.totales.monto.toLocaleString('es-AR')}</div>
                     </div>
                     <div class="footer">
@@ -415,7 +415,7 @@ export default function ReporteResidenciaPage() {
                                         Total de Horas
                                     </Text>
                                     <Text variant="small" className="font-bold text-blue-600">
-                                        {formatearDuracion(reporte.totales.minutos)}
+                                        {formatearDuracion(reporte.totalMinutos)}
                                     </Text>
                                 </View>
                                 <View className="flex-row justify-between">
