@@ -2041,8 +2041,12 @@ class PrestacionService {
         // Fallback offline: usar datos cacheados de obtenerPrestacionesDelDia
         const cached = await this.obtenerDeCache();
         if (cached) {
+          // Misma ventana que el RPC: últimos 6 días hasta fin de hoy (hora Argentina)
+          const finRango = moment().tz(this.TIMEZONE).endOf('day');
+          const inicioRango = moment().tz(this.TIMEZONE).startOf('day').subtract(6, 'days');
           const prestacionesCentro = cached.pendientes
-            .filter(p => p.centro_id === centroId && p.tipo_prestacion !== 'Transporte')
+            .filter(p => p.centro_id === centroId && p.tipo_prestacion !== 'Transporte'
+              && moment(p.fecha).isSameOrBefore(finRango) && moment(p.fecha).isSameOrAfter(inicioRango))
             .map(p => {
               const partes = (p.paciente_nombre || '').split(' ');
               const nombre = partes[0] || '';
