@@ -168,7 +168,7 @@ export default function ReporteResidenciaPage() {
             `).join('');
 
             const filasPrestaciones = reporte.prestaciones.map(p => {
-                const j = p.estado === 'completada' ? jornadaDelDia(p.fecha) : undefined;
+                const j = p.estado === 'completada' ? jornadaDelDia(p.completed_at ?? p.fecha) : undefined;
                 const usarJornada = !p.started_at && j;
                 const inicio = usarJornada ? formatearHora(j.entrada_at) : formatearHora(p.started_at);
                 const fin = usarJornada ? formatearHora(j.salida_at) : formatearHora(p.completed_at);
@@ -264,7 +264,7 @@ export default function ReporteResidenciaPage() {
                 </html>
             `;
 
-            const { uri } = await Print.printToFileAsync({ html });
+            const { uri } = await Print.printToFileAsync({ html, orientation: Print.Orientation.landscape });
 
             const sanitize = (str: string) =>
                 str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -505,7 +505,7 @@ export default function ReporteResidenciaPage() {
                                                 {p.started_at
                                                     ? `${formatearHora(p.started_at)} - ${formatearHora(p.completed_at)} (${formatearDuracion(p.minutos)})`
                                                     : (() => {
-                                                        const j = p.estado === 'completada' ? jornadaDelDia(p.fecha) : undefined;
+                                                        const j = p.estado === 'completada' ? jornadaDelDia(p.completed_at ?? p.fecha) : undefined;
                                                         return j
                                                             ? `${formatearHora(j.entrada_at)} - ${formatearHora(j.salida_at)} (Jornada: ${formatearDuracion(j.minutos)})`
                                                             : `- - - (${formatearDuracion(p.minutos)})`;
