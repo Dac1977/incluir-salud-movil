@@ -396,7 +396,7 @@ export default function ReportesPage() {
             `;
 
             // Generar el PDF
-            const { uri } = await Print.printToFileAsync({ html });
+            const { uri } = await Print.printToFileAsync({ html, orientation: Print.Orientation.landscape });
 
             // Sanitizar nombre de archivo (elimina tildes y caracteres no válidos)
             const sanitize = (str: string) =>
