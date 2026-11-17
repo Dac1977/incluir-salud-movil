@@ -305,22 +305,22 @@ export default function ReportesPage() {
             // Nota: Para incluir el logo en el PDF, se puede usar una URL pública
             // o convertir la imagen a base64. Por ahora usamos un placeholder.
             // El logo se puede agregar después desde una URL pública o base64.
-            const logoHtml = `<div style="text-align: center; margin-bottom: 20px;">
-                <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">INCLUIR SALUD</div>
+            const logoHtml = `<div class="logo-wrap">
+                <div class="brand">INCLUIR SALUD</div>
             </div>`;
 
             const filasTabla = prestaciones.map(p => `
                 <tr>
-                    <td style="padding: 8px; border: 1px solid #ddd;">${moment(p.fecha).tz(TIMEZONE).format('DD/MM/YYYY')}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">${p.completed_at ? moment(p.completed_at).tz(TIMEZONE).format('DD/MM/YYYY') : '-'}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">${p.tipo_prestacion.replace(/_/g, ' ').toUpperCase()}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">${p.paciente ? `${p.paciente.apellido}, ${p.paciente.nombre}` : 'N/A'}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">${p.paciente?.documento || 'N/A'}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">${p.estado.toUpperCase()}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">${formatearHora(p.started_at)}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">${formatearHora(p.completed_at)}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${formatearDuracion(p.minutos)}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${formatearMonto(p.monto)}</td>
+                    <td>${moment(p.fecha).tz(TIMEZONE).format('DD/MM/YYYY')}</td>
+                    <td>${p.completed_at ? moment(p.completed_at).tz(TIMEZONE).format('DD/MM/YYYY') : '-'}</td>
+                    <td>${p.tipo_prestacion.replace(/_/g, ' ').toUpperCase()}</td>
+                    <td>${p.paciente ? `${p.paciente.apellido}, ${p.paciente.nombre}` : 'N/A'}</td>
+                    <td>${p.paciente?.documento || 'N/A'}</td>
+                    <td>${p.estado.toUpperCase()}</td>
+                    <td>${formatearHora(p.started_at)}</td>
+                    <td>${formatearHora(p.completed_at)}</td>
+                    <td class="right">${formatearDuracion(p.minutos)}</td>
+                    <td class="right">${formatearMonto(p.monto)}</td>
                 </tr>
             `).join('');
 
@@ -332,6 +332,8 @@ export default function ReportesPage() {
                     <style>
                         body { font-family: Arial, sans-serif; padding: 20px; }
                         .header { text-align: center; margin-bottom: 30px; }
+                        .logo-wrap { text-align: center; margin-bottom: 20px; }
+                        .brand { font-size: 24px; font-weight: bold; color: #3b82f6; }
                         .logo-container { margin-bottom: 15px; }
                         .logo { max-width: 120px; max-height: 120px; margin: 0 auto; }
                         h1 { color: #1f2937; margin: 10px 0; }
@@ -341,8 +343,9 @@ export default function ReportesPage() {
                         .info-row { margin: 5px 0; font-size: 12px; }
                         .info-label { font-weight: bold; display: inline-block; width: 100px; }
                         table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 11px; }
-                        th { background-color: #3b82f6; color: white; padding: 10px; border: 1px solid #ddd; text-align: left; }
-                        td { padding: 8px; border: 1px solid #ddd; }
+                        th, td { padding: 8px; border: 1px solid #ddd; }
+                        th { background-color: #3b82f6; color: white; text-align: left; }
+                        td.right { text-align: right; }
                         .totales { margin-top: 20px; font-size: 13px; }
                         .totales-row { margin: 5px 0; }
                         .footer { margin-top: 30px; font-size: 10px; color: #6b7280; text-align: center; }
