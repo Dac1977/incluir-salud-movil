@@ -162,8 +162,8 @@ export default function ReporteResidenciaPage() {
 
             const filasPacientes = reporte.pacientes.map(p => `
                 <tr>
-                    <td style="padding: 8px; border: 1px solid #ddd;">${p.apellido}, ${p.nombre}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">${p.documento || 'N/A'}</td>
+                    <td>${p.apellido}, ${p.nombre}</td>
+                    <td>${p.documento || 'N/A'}</td>
                 </tr>
             `).join('');
 
@@ -175,15 +175,15 @@ export default function ReporteResidenciaPage() {
                 const duracion = usarJornada ? `${formatearDuracion(j.minutos)} (jornada)` : formatearDuracion(p.minutos);
                 return `
                 <tr>
-                    <td style="padding: 8px; border: 1px solid #ddd;">${formatearFecha(p.fecha)}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">${p.completed_at ? formatearFecha(p.completed_at) : '-'}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">${p.tipo_prestacion.replace(/_/g, ' ').toUpperCase()}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">${p.paciente ? `${p.paciente.apellido}, ${p.paciente.nombre}` : 'N/A'}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">${p.estado.toUpperCase()}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">${inicio}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">${fin}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${duracion}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">$${p.monto.toLocaleString('es-AR')}</td>
+                    <td>${formatearFecha(p.fecha)}</td>
+                    <td>${p.completed_at ? formatearFecha(p.completed_at) : '-'}</td>
+                    <td>${p.tipo_prestacion.replace(/_/g, ' ').toUpperCase()}</td>
+                    <td>${p.paciente ? `${p.paciente.apellido}, ${p.paciente.nombre}` : 'N/A'}</td>
+                    <td>${p.estado.toUpperCase()}</td>
+                    <td>${inicio}</td>
+                    <td>${fin}</td>
+                    <td class="right">${duracion}</td>
+                    <td class="right">$${p.monto.toLocaleString('es-AR')}</td>
                 </tr>
             `;
             }).join('');
@@ -196,12 +196,15 @@ export default function ReporteResidenciaPage() {
                     <style>
                         body { font-family: Arial, sans-serif; padding: 20px; }
                         .header { text-align: center; margin-bottom: 30px; }
+                        .brand { font-size: 24px; font-weight: bold; color: #3b82f6; }
                         h1 { color: #1f2937; margin: 10px 0; }
                         .section { margin: 20px 0; }
                         .section-title { font-weight: bold; font-size: 14px; margin-bottom: 10px; color: #374151; }
                         table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 11px; }
-                        th { background-color: #3b82f6; color: white; padding: 10px; border: 1px solid #ddd; text-align: left; }
-                        td { padding: 8px; border: 1px solid #ddd; }
+                        th, td { padding: 8px; border: 1px solid #ddd; }
+                        th { background-color: #3b82f6; color: white; text-align: left; }
+                        td.right { text-align: right; }
+                        td.center { text-align: center; }
                         .totales { margin-top: 20px; font-size: 13px; }
                         .totales-row { margin: 5px 0; }
                         .footer { margin-top: 30px; font-size: 10px; color: #6b7280; text-align: center; }
@@ -209,7 +212,7 @@ export default function ReporteResidenciaPage() {
                 </head>
                 <body>
                     <div class="header">
-                        <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">INCLUIR SALUD</div>
+                        <div class="brand">INCLUIR SALUD</div>
                         <h1>REPORTE DE RESIDENCIA</h1>
                     </div>
                     <div class="section">
@@ -227,7 +230,7 @@ export default function ReporteResidenciaPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                ${filasPacientes || '<tr><td colspan="2" style="text-align:center;">Sin pacientes</td></tr>'}
+                                ${filasPacientes || '<tr><td colspan="2" class="center">Sin pacientes</td></tr>'}
                             </tbody>
                         </table>
                     </div>
@@ -248,7 +251,7 @@ export default function ReporteResidenciaPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                ${filasPrestaciones || '<tr><td colspan="9" style="text-align:center;">Sin prestaciones</td></tr>'}
+                                ${filasPrestaciones || '<tr><td colspan="9" class="center">Sin prestaciones</td></tr>'}
                             </tbody>
                         </table>
                     </div>
